@@ -216,6 +216,29 @@ async def test_nack_moves_to_dead_after_max_retries(db_session: AsyncSession) ->
 
 
 @pytest.mark.asyncio
+async def test_list_tasks_filters_by_status_and_type(repository: TaskRepository) -> None:
+    await repository.create(task_type="a", payload={})
+    dead = await repository.create(task_type="b", payload={}, max_retries=1)
+    await repository.pull_once(worker_id="w1")
+    await repository.pull_once(worker_id="w1")
+    await repository.nack(dead.id, "w1")
+
+    items, total = await repository.list_tasks(status=TaskStatus.DEAD.value, task_type="b", limit=10, offset=0)
+    assert total == 1
+    assert len(items) == 1
+    assert items[0].id == dead.id
+
+
+@pytest.mark.asyncio
+async def test_list_tasks_applies_limit_and_offset(repository: TaskRepository) -> None:
+    for index in range(3):
+        await repository.create(task_type="job", payload={"index": index})
+    page, total = await repository.list_tasks(limit=1, offset=1)
+    assert total == 3
+    assert len(page) == 1
+
+
+@pytest.mark.asyncio
 async def test_count_by_status_and_type(repository: TaskRepository) -> None:
     await repository.create(task_type="a", payload={})
     await repository.create(task_type="b", payload={})

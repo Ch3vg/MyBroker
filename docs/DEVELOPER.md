@@ -406,6 +406,19 @@ broker.app         # ASGI-приложение для встраивания
 
 По умолчанию pytest проверяет coverage пакета `broker` (порог — 90%). Перед коммитом всегда прогоняйте тесты с coverage.
 
+PostgreSQL smoke-тест (опционально):
+
+    pip install -e ".[dev,postgresql]"
+    set BROKER_POSTGRES_DSN=postgresql+asyncpg://user:pass@localhost/broker_test
+    pytest -m postgresql
+
+Без переменной `BROKER_POSTGRES_DSN` тест пропускается.
+
+Покрытие v0.6.0 (дополнительно к v0.5.0):
+- `GET /tasks` (фильтры, пагинация, cap limit)
+- `list_tasks` в репозитории
+- PostgreSQL smoke-тест (`BROKER_POSTGRES_DSN`, маркер `postgresql`)
+
 Покрытие v0.5.0 (дополнительно к v0.4.0):
 - `GET /metrics` (Prometheus text format, gauges, counters, histogram)
 - `count_by_status_and_type`, `refresh_status_gauges`

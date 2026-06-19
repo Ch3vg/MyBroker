@@ -39,3 +39,22 @@ class WorkerActionRequest(BaseModel):
 
 class NackRequest(WorkerActionRequest):
     reason: str = Field(default="", max_length=2000)
+
+
+class TaskListItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    task_type: str
+    status: str
+    retries: int
+    max_retries: int
+    available_at: datetime
+    created_at: datetime
+
+
+class TaskListResponse(BaseModel):
+    items: list[TaskListItem]
+    total: int
+    limit: int
+    offset: int

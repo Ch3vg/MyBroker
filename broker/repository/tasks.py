@@ -71,6 +71,37 @@ class TaskRepository:
         result = await self._session.execute(stmt)
         return [(status, task_type, count) for status, task_type, count in result.all()]
 
+    async def list_tasks(
+        self,
+        *,
+        status: str | None = None,
+        task_type: str | None = None,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[Task], int]:
+        filters = self._list_filters(status=status, task_type=task_type)
+        count_stmt = select(func.count()).select_from(Task)
+        list_stmt = select(Task).order_by(Task.created_at)
+        if filters:
+            count_stmt = count_stmt.where(*filters)
+            list_stmt = list_stmt.where(*filters)
+        total = int(await self._session.scalar(count_stmt) or 0)
+        result = await self._session.execute(list_stmt.limit(limit).offset(offset))
+        return list(result.scalars().all()), total
+
+    def _list_filters(
+        self,
+        *,
+        status: str | None,
+        task_type: str | None,
+    ) -> list:
+        filters = []
+        if status is not None:
+            filters.append(Task.status == status)
+        if task_type is not None:
+            filters.append(Task.task_type == task_type)
+        return filters
+
     async def pull_once(
         self,
         *,

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "task-broker"
-version = "0.5.0"
+version = "0.6.0"
 description = "HTTP task broker with at-least-once delivery, SQLite-backed"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -27,6 +27,9 @@ dev = [
     "pytest-cov>=6.0",
     "httpx>=0.28",
 ]
+postgresql = [
+    "asyncpg>=0.30",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -39,6 +42,7 @@ testpaths = ["tests"]
 addopts = "--cov=broker --cov-report=term-missing --cov-fail-under=90"
 markers = [
     "stress: повторяет недетерминированный тест несколько раз",
+    "postgresql: smoke-тесты против PostgreSQL (нужен BROKER_POSTGRES_DSN)",
 ]
 
 [tool.coverage.run]

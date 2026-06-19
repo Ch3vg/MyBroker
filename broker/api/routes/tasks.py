@@ -10,9 +10,11 @@ from broker.api.schemas.tasks import (
     PublishTaskRequest,
     PublishTaskResponse,
     PullTaskResponse,
+    TaskListResponse,
     TaskStatusResponse,
     WorkerActionRequest,
 )
+from broker.db.enums import TaskStatus
 from broker.metrics import (
     observe_pull_duration,
     record_completed,
@@ -54,6 +56,43 @@ async def publish_task(
     )
     record_published(task.task_type)
     return PublishTaskResponse(task_id=task.id)
+
+
+@router.get("/tasks", response_model=TaskListResponse)
+async def list_tasks(
+    session: SessionDep,
+    broker: BrokerDep,
+    task_status: str | None = Query(None, alias="status"),
+    task_type: str | None = Query(None, min_length=1),
+    limit: int | None = Query(None, ge=1),
+    offset: int = Query(0, ge=0),
+) -> TaskListResponse:
+    if task_status is not None:
+        try:
+            TaskStatus(task_status)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Invalid status",
+            ) from exc
+    page_limit = (
+        broker.settings.list_default_limit
+        if limit is None
+        else min(limit, broker.settings.list_max_limit)
+    )
+    repository = _repository(broker, session)
+    tasks, total = await repository.list_tasks(
+        status=task_status,
+        task_type=task_type,
+        limit=page_limit,
+        offset=offset,
+    )
+    return TaskListResponse(
+        items=tasks,
+        total=total,
+        limit=page_limit,
+        offset=offset,
+    )
 
 
 @router.get("/tasks/pull", response_model=PullTaskResponse)
