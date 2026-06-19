@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "task-broker"
+version = "0.1.0"
+description = "HTTP task broker with at-least-once delivery, SQLite-backed"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Evgeny" }]
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "sqlalchemy[asyncio]>=2.0",
+    "aiosqlite>=0.20",
+    "structlog>=24.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-mock>=3.14",
+    "pytest-cov>=6.0",
+    "httpx>=0.28",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["broker*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+addopts = "--cov=broker --cov-report=term-missing --cov-fail-under=90"
+
+[tool.coverage.run]
+source = ["broker"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+]

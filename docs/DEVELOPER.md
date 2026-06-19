@@ -368,7 +368,13 @@ broker.app         # ASGI-приложение для встраивания
 
 ## Запуск для разработки
 
-    pip install -e .
+Минимальная версия Python: **3.10**. Разработка ведётся только в venv:
+
+    python3.10 -m venv .venv
+    .venv\Scripts\activate        # Windows
+    source .venv/bin/activate     # Linux / macOS
+
+    pip install -e ".[dev]"
 
     python -c "
     from broker import Broker
@@ -381,16 +387,19 @@ broker.app         # ASGI-приложение для встраивания
 
 ## Тестирование
 
-Тесты используют отдельную тестовую БД (`file::memory:?cache=shared` для SQLite). Запуск:
+Тесты используют отдельную тестовую БД (`file:memdb1?mode=memory&cache=shared` для SQLite). Запуск из активированного venv:
 
-    pytest tests/
+    pytest
 
-Покрываются:
-- репозиторий (create, pull, ack, nack, heartbeat)
-- API-ручки (включая конфликтные сценарии)
-- обработка ошибок и таймаутов
-- отложенный запуск (`available_at`)
-- per-task `max_retries`
+По умолчанию pytest проверяет coverage пакета `broker` (порог — 90%). Перед коммитом всегда прогоняйте тесты с coverage.
+
+Покрытие v0.1.0:
+- класс `Broker` (настройки, `run()`, `app`)
+- инициализация схемы БД и индексов
+- `GET /health`
+- настройка structlog
+
+Будущие версии добавят тесты publish, pull, ack, nack, heartbeat, retry и DLQ.
 
 ---
 
