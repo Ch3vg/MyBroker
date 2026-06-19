@@ -1,11 +1,14 @@
-# EVS Task Broker
+# Task Broker
 
 HTTP-брокер задач на Python (FastAPI + SQLite). At-least-once доставка, блокировка, heartbeat, retry и Dead Letter Queue — без Redis, RabbitMQ и других внешних очередей.
+
+Брокер оформлен как **Python-библиотека**: все параметры передаются в конструктор класса `Broker`, затем сервер запускается программно.
 
 Проект в стадии активной разработки (pre-1.0). Текущая версия: **v0.0.0** (спецификация и документация).
 
 ## Возможности
 
+- **Python-библиотека** — настройка через конструктор `Broker`, запуск через `run()` или ASGI `app`
 - **Публикация задач** с произвольным JSON-payload и отложенным запуском (`delay_seconds`)
 - **Pull-модель** для воркеров с long polling и атомарной блокировкой (`FOR UPDATE SKIP LOCKED`)
 - **Heartbeat** для продления блокировки и автоматического requeue при падении воркера
@@ -63,50 +66,63 @@ GET /api/v1/tasks/pull?worker_id=w-1&task_types=config.regenerate&timeout=30
 
 Опциональный параметр `task_types` — список типов, которые воркер готов обрабатывать. Если не указан — воркер получает задачи любого типа.
 
-## Конфигурация
-
-Файл `broker_config.yaml` или переменные окружения с префиксом `BROKER_`:
-
-```yaml
-storage:
-  dsn: "sqlite:///./broker.db"
-  journal_mode: "WAL"
-
-server:
-  host: "0.0.0.0"
-  port: 8001
-  workers: 4
-
-queues:
-  default_lock_ttl_seconds: 60
-  default_max_retries: 3
-  retry_delay_seconds: 5
-  dead_letter_enabled: true
-
-polling:
-  default_timeout_seconds: 30
-  max_timeout_seconds: 120
-  interval_seconds: 1
-
-list:
-  default_limit: 50
-  max_limit: 200
-```
-
-## Быстрый старт
+## Использование
 
 > Код брокера находится в разработке. После релиза v0.1.0:
 
 ```bash
-pip install -e .
-uvicorn broker.main:app --reload --host 0.0.0.0 --port 8001
+pip install .
 ```
+
+```python
+from broker import Broker
+
+broker = Broker(
+    dsn="sqlite+aiosqlite:///./broker.db",
+    host="0.0.0.0",
+    port=8001,
+    default_lock_ttl_seconds=60,
+    default_max_retries=3,
+    retry_delay_seconds=5,
+    default_pull_timeout_seconds=30,
+    max_pull_timeout_seconds=120,
+    pull_interval_seconds=1,
+)
+
+broker.run()  # блокирующий запуск HTTP-сервера
+```
+
+Для интеграции в существующее приложение доступен ASGI-приложение:
+
+```python
+app = broker.app  # монтирование в FastAPI / запуск через uvicorn
+```
+
+### Параметры `Broker`
+
+| Параметр | По умолчанию | Описание |
+|----------|--------------|----------|
+| `dsn` | `sqlite+aiosqlite:///./broker.db` | DSN SQLAlchemy (SQLite, PostgreSQL и др.) |
+| `host` | `"0.0.0.0"` | Адрес HTTP-сервера |
+| `port` | `8001` | Порт HTTP-сервера |
+| `default_lock_ttl_seconds` | `60` | TTL блокировки задачи |
+| `default_max_retries` | `3` | Лимит повторов по умолчанию (per-task override при publish) |
+| `retry_delay_seconds` | `5` | Задержка перед повторной выдачей после nack |
+| `dead_letter_enabled` | `True` | Перевод в DEAD при исчерпании попыток |
+| `default_pull_timeout_seconds` | `30` | Long poll timeout по умолчанию |
+| `max_pull_timeout_seconds` | `120` | Максимально допустимый pull timeout |
+| `pull_interval_seconds` | `1` | Интервал опроса БД при long polling |
+| `list_default_limit` | `50` | Размер страницы list API по умолчанию *(v0.6.0)* |
+| `list_max_limit` | `200` | Максимальный limit list API *(v0.6.0)* |
+| `log_level` | `"INFO"` | Уровень логирования |
+
+Полный список и описание — в [docs/DEVELOPER.md](docs/DEVELOPER.md).
 
 ## Дорожная карта
 
 | Версия | Содержание |
 |--------|------------|
-| **v0.1.0** | Каркас, конфиг, БД, health, structlog |
+| **v0.1.0** | Класс `Broker`, БД, health, structlog, `run()` |
 | **v0.2.0** | Publish, status |
 | **v0.3.0** | Pull, long polling, блокировка |
 | **v0.4.0** | Heartbeat, ack, nack, retry, DLQ |

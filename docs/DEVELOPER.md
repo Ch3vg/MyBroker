@@ -1,4 +1,4 @@
-# EVS Task Broker – Developer Guide
+# Task Broker – Developer Guide
 
 > Пользовательская документация: [README.md](../README.md)
 
@@ -6,9 +6,47 @@
 
 Брокер задач, написанный на Python с использованием FastAPI и SQLite (aiosqlite). Обеспечивает at‑least‑once доставку, блокировку задач, heartbeat, retry и Dead Letter Queue. Брокер работает как отдельный HTTP-сервис, не требует внешних очередей (Redis, RabbitMQ).
 
-По умолчанию используется SQLite, но хранилище заменяемо: достаточно указать другой DSN (PostgreSQL и т.д.). Параметры long polling (интервал опроса, таймауты) настраиваются через конфиг.
+Брокер поставляется как **Python-библиотека**. Все настройки передаются в конструктор класса `Broker`; YAML-файлы и переменные окружения не используются. По умолчанию — SQLite, но хранилище заменяемо через параметр `dsn`.
 
 Этот документ предназначен для разработчиков, которые хотят понять внутреннее устройство, дорабатывать или отлаживать брокер.
+
+---
+
+## Класс Broker
+
+Точка входа библиотеки — класс `Broker`. Он принимает все параметры явно, создаёт FastAPI-приложение и управляет жизненным циклом БД.
+
+```python
+from broker import Broker
+
+broker = Broker(
+    dsn="sqlite+aiosqlite:///./broker.db",
+    host="0.0.0.0",
+    port=8001,
+    default_lock_ttl_seconds=60,
+    default_max_retries=3,
+    retry_delay_seconds=5,
+    dead_letter_enabled=True,
+    default_pull_timeout_seconds=30,
+    max_pull_timeout_seconds=120,
+    pull_interval_seconds=1,
+    list_default_limit=50,
+    list_max_limit=200,
+    log_level="INFO",
+)
+
+broker.run()       # блокирующий запуск (uvicorn)
+broker.app         # ASGI-приложение для встраивания
+```
+
+### Методы
+
+| Метод / свойство | Описание |
+|------------------|----------|
+| `run()` | Запуск HTTP-сервера на `host:port` |
+| `app` | FastAPI ASGI-приложение (для uvicorn, hypercorn, встраивания) |
+
+При первом запуске выполняется инициализация БД (создание таблицы, индексов). Для SQLite файл создаётся по пути из DSN.
 
 ---
 
@@ -60,7 +98,7 @@
 - `task_type` – обязательный
 - `payload` – обязательный, произвольный JSON
 - `delay_seconds` – опционально, по умолчанию 0; отложенный запуск задачи
-- `max_retries` – опционально; per-task лимит повторов. Если не передан – берётся из конфига (`queues.default_max_retries`)
+- `max_retries` – опционально; per-task лимит повторов. Если не передан – берётся из `Broker.default_max_retries`
 
 Ответ (201 Created):
 
@@ -78,7 +116,7 @@
 Параметры запроса:
 - `task_types` – опционально, список типов задач, которые воркер готов обрабатывать (повторяющийся query-параметр или через запятую). Если не передан или пуст – воркер получает задачи любого типа
 - `worker_id` – обязательный, уникальный ID воркера
-- `timeout` – опционально, максимальное время ожидания (сек), по умолчанию из конфига
+- `timeout` – опционально, максимальное время ожидания (сек), по умолчанию `Broker.default_pull_timeout_seconds`
 
 Пример: `GET /api/v1/tasks/pull?worker_id=w-1&task_types=config.regenerate&task_types=email.send`
 
@@ -89,7 +127,7 @@
    - `available_at <= NOW()`
    - используется `SELECT ... FOR UPDATE SKIP LOCKED`
 2. Если задача найдена – переводит её в PROCESSING, устанавливает `worker_id` и `lock_until = NOW() + TTL`, коммитит транзакцию и возвращает задачу.
-3. Если задач нет – повторяет попытку с интервалом `polling.interval_seconds` до истечения `timeout`, затем возвращает 204 No Content. Транзакция на время ожидания не удерживается.
+3. Если задач нет – повторяет попытку с интервалом `Broker.pull_interval_seconds` до истечения `timeout`, затем возвращает 204 No Content. Транзакция на время ожидания не удерживается.
 
 Ответ (200 OK):
 
@@ -169,7 +207,7 @@
 Параметры запроса:
 - `status` – опционально, фильтр по статусу (например, `DEAD`)
 - `task_type` – опционально, фильтр по типу
-- `limit` – опционально, размер страницы (по умолчанию из конфига)
+- `limit` – опционально, размер страницы (по умолчанию `Broker.list_default_limit`)
 - `offset` – опционально, смещение для пагинации
 
 Ответ (200 OK):
@@ -226,7 +264,7 @@
 
 ### Long polling
 
-Ожидание реализовано циклом коротких транзакций: попытка pull → sleep на `polling.interval_seconds` → повтор до `timeout`. Интервал и таймауты настраиваются в конфиге.
+Ожидание реализовано циклом коротких транзакций: попытка pull → sleep на `pull_interval_seconds` → повтор до `timeout`. Интервал и таймауты задаются при создании `Broker`.
 
 ### Heartbeat и TTL
 
@@ -242,37 +280,54 @@
 
 ---
 
-## Конфигурация
+## Параметры Broker
 
-Конфиг задаётся через `broker_config.yaml` или переменные окружения (с префиксом `BROKER_`). Основные параметры:
+Все настройки передаются в конструктор `Broker`. Значения по умолчанию указаны в таблице.
 
-    storage:
-      dsn: "sqlite:///./broker.db"
-      journal_mode: "WAL"
+### Хранилище
 
-    server:
-      host: "0.0.0.0"
-      port: 8001
-      workers: 4
+| Параметр | По умолчанию | Описание |
+|----------|--------------|----------|
+| `dsn` | `sqlite+aiosqlite:///./broker.db` | DSN SQLAlchemy |
 
-    queues:
-      default_lock_ttl_seconds: 60
-      default_max_retries: 3
-      retry_delay_seconds: 5
-      dead_letter_enabled: true
+### HTTP-сервер
 
-    polling:
-      default_timeout_seconds: 30
-      max_timeout_seconds: 120
-      interval_seconds: 1
+| Параметр | По умолчанию | Описание |
+|----------|--------------|----------|
+| `host` | `"0.0.0.0"` | Адрес bind |
+| `port` | `8001` | Порт |
 
-    list:
-      default_limit: 50
-      max_limit: 200
+### Очередь
 
-Все параметры обязательны. В коде используется pydantic-settings для загрузки.
+| Параметр | По умолчанию | Описание |
+|----------|--------------|----------|
+| `default_lock_ttl_seconds` | `60` | TTL блокировки; используется при pull и heartbeat |
+| `default_max_retries` | `3` | Default для publish, если клиент не передал `max_retries` |
+| `retry_delay_seconds` | `5` | Задержка перед повторной выдачей после nack |
+| `dead_letter_enabled` | `True` | Перевод в DEAD при исчерпании попыток |
 
-`queues.default_max_retries` – значение по умолчанию для publish, если клиент не передал `max_retries`. В БД сохраняется per-task значение.
+### Long polling
+
+| Параметр | По умолчанию | Описание |
+|----------|--------------|----------|
+| `default_pull_timeout_seconds` | `30` | Timeout long poll по умолчанию |
+| `max_pull_timeout_seconds` | `120` | Максимально допустимый timeout в query-параметре |
+| `pull_interval_seconds` | `1` | Интервал опроса БД между попытками pull |
+
+### List API *(v0.6.0)*
+
+| Параметр | По умолчанию | Описание |
+|----------|--------------|----------|
+| `list_default_limit` | `50` | Размер страницы по умолчанию |
+| `list_max_limit` | `200` | Максимальный limit |
+
+### Логирование
+
+| Параметр | По умолчанию | Описание |
+|----------|--------------|----------|
+| `log_level` | `"INFO"` | Уровень structlog |
+
+`default_max_retries` при publish сохраняется в строку задачи как per-task значение.
 
 ---
 
@@ -282,9 +337,9 @@
 
 ### v0.1.0 – Каркас и инфраструктура
 - структура проекта, зависимости
-- загрузка конфигурации (yaml + env)
+- класс `Broker` с параметрами конструктора
 - слой БД, миграции, таблица `tasks`
-- `GET /health`, entrypoint, structlog
+- `GET /health`, `run()`, structlog
 
 ### v0.2.0 – Публикация и статус
 - `POST /tasks` (`delay_seconds`, `max_retries`, `available_at`)
@@ -313,16 +368,14 @@
 
 ## Запуск для разработки
 
-    # Установка зависимостей
     pip install -e .
 
-    # Запуск брокера (с автоматической миграцией БД)
-    uvicorn broker.main:app --reload --host 0.0.0.0 --port 8001
+    python -c "
+    from broker import Broker
+    Broker(dsn='sqlite+aiosqlite:///./broker.db').run()
+    "
 
-    # Или через python -m
-    python -m broker.main
-
-При первом запуске создаётся файл `broker.db` (если не указан другой путь). Миграции выполняются автоматически при старте (создание таблицы, индексов).
+При первом запуске создаётся файл `broker.db` (если не указан другой путь в DSN). Миграции выполняются автоматически при старте.
 
 ---
 
@@ -349,17 +402,17 @@
 
 ### Изменение логики ретраев
 
-Реализовано в методе `nack()` репозитория. Можно переопределить, задав другую стратегию (экспоненциальная задержка, приоритезация и т.д.) в том же методе или через конфигурацию.
+Реализовано в методе `nack()` репозитория. Можно переопределить, задав другую стратегию (экспоненциальная задержка, приоритезация и т.д.) в том же методе или через параметры `Broker`.
 
 ### Использование другого хранилища (например, PostgreSQL)
 
-Поменяйте DSN в конфиге на `postgresql+asyncpg://...` и установите драйвер. SQLAlchemy поддерживает PostgreSQL – `FOR UPDATE SKIP LOCKED` работает аналогично. Параметры long polling (`interval_seconds`, таймауты) настраиваются независимо от СУБД.
+Передайте DSN PostgreSQL в конструктор: `Broker(dsn="postgresql+asyncpg://...")`. SQLAlchemy поддерживает PostgreSQL – `FOR UPDATE SKIP LOCKED` работает аналогично. Параметры long polling задаются независимо от СУБД.
 
 ---
 
 ## Логирование
 
-Логи выводятся в stdout в формате JSON (structlog). Уровень логирования настраивается через переменную окружения `LOG_LEVEL` (по умолчанию INFO). Основные события: создание задачи, pull, ack, nack, heartbeat, ошибки, DLQ.
+Логи выводятся в stdout в формате JSON (structlog). Уровень задаётся параметром `log_level` при создании `Broker`. Основные события: создание задачи, pull, ack, nack, heartbeat, ошибки, DLQ.
 
 ---
 
