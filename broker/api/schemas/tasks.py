@@ -15,6 +15,13 @@ class PublishTaskResponse(BaseModel):
     task_id: str
 
 
+class PullTaskResponse(BaseModel):
+    task_id: str
+    task_type: str
+    payload: dict[str, Any]
+    lock_ttl_seconds: int
+
+
 class TaskStatusResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

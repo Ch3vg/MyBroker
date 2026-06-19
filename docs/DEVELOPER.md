@@ -393,10 +393,10 @@ broker.app         # ASGI-приложение для встраивания
 
 По умолчанию pytest проверяет coverage пакета `broker` (порог — 90%). Перед коммитом всегда прогоняйте тесты с coverage.
 
-Покрытие v0.2.0 (дополнительно к v0.1.0):
-- `POST /tasks` (publish, delay_seconds, max_retries)
-- `GET /tasks/{id}/status`
-- репозиторий задач
+Покрытие v0.3.0 (дополнительно к v0.2.0):
+- `GET /tasks/pull` (long polling, task_types, timeout)
+- атомарный pull, expired lock, конкурентный pull
+- `pull_with_polling`, `parse_task_types`
 
 ---
 

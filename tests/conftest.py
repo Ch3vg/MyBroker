@@ -1,3 +1,4 @@
+import uuid
 from collections.abc import AsyncIterator
 
 import pytest
@@ -7,12 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from broker import Broker
 from broker.db.schema import init_schema
 
-MEMORY_DSN = "sqlite+aiosqlite:///file:memdb1?mode=memory&cache=shared&uri=true"
-
 
 @pytest.fixture
 def memory_dsn() -> str:
-    return MEMORY_DSN
+    uid = uuid.uuid4().hex
+    return f"sqlite+aiosqlite:///file:{uid}?mode=memory&cache=shared&uri=true"
 
 
 @pytest.fixture
