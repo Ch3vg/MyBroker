@@ -215,6 +215,16 @@ async def test_nack_moves_to_dead_after_max_retries(db_session: AsyncSession) ->
     assert dead.retries == 2
 
 
+@pytest.mark.asyncio
+async def test_count_by_status_and_type(repository: TaskRepository) -> None:
+    await repository.create(task_type="a", payload={})
+    await repository.create(task_type="b", payload={})
+    await repository.pull_once(worker_id="w1")
+    counts = await repository.count_by_status_and_type()
+    assert ("PENDING", "b", 1) in counts
+    assert ("PROCESSING", "a", 1) in counts
+
+
 @pytest.mark.stress
 @pytest.mark.asyncio
 async def test_concurrent_pull_assigns_single_task(

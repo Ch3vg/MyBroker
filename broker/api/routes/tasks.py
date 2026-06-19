@@ -1,3 +1,5 @@
+import time
+
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +12,13 @@ from broker.api.schemas.tasks import (
     PullTaskResponse,
     TaskStatusResponse,
     WorkerActionRequest,
+)
+from broker.metrics import (
+    observe_pull_duration,
+    record_completed,
+    record_nacked,
+    record_pull_empty,
+    record_published,
 )
 from broker.repository.errors import StaleTaskError, TaskNotFoundError
 from broker.repository.tasks import TaskRepository
@@ -43,6 +52,7 @@ async def publish_task(
         delay_seconds=body.delay_seconds,
         max_retries=body.max_retries,
     )
+    record_published(task.task_type)
     return PublishTaskResponse(task_id=task.id)
 
 
@@ -59,6 +69,7 @@ async def pull_task(
         if timeout is None
         else min(timeout, broker.settings.max_pull_timeout_seconds)
     )
+    started = time.perf_counter()
     task = await pull_with_polling(
         request.app.state.session_factory,
         broker.settings,
@@ -66,7 +77,9 @@ async def pull_task(
         task_types=parse_task_types(task_types),
         timeout_seconds=timeout_seconds,
     )
+    observe_pull_duration(time.perf_counter() - started)
     if task is None:
+        record_pull_empty()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     return PullTaskResponse(
         task_id=task.id,
@@ -99,9 +112,11 @@ async def ack_task(
 ) -> None:
     repository = _repository(broker, session)
     try:
-        await repository.ack(task_id, body.worker_id)
+        task = await repository.ack(task_id, body.worker_id)
     except (TaskNotFoundError, StaleTaskError) as exc:
         _lifecycle_http_errors(exc)
+    else:
+        record_completed(task.task_type)
 
 
 @router.post("/tasks/{task_id}/nack", status_code=status.HTTP_200_OK)
@@ -113,9 +128,11 @@ async def nack_task(
 ) -> None:
     repository = _repository(broker, session)
     try:
-        await repository.nack(task_id, body.worker_id)
+        task = await repository.nack(task_id, body.worker_id)
     except (TaskNotFoundError, StaleTaskError) as exc:
         _lifecycle_http_errors(exc)
+    else:
+        record_nacked(task.task_type)
 
 
 @router.get("/tasks/{task_id}/status", response_model=TaskStatusResponse)

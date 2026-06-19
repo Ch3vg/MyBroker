@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from broker.config import BrokerSettings
@@ -62,6 +62,14 @@ class TaskRepository:
 
     async def get_by_id(self, task_id: str) -> Task | None:
         return await self._session.get(Task, task_id)
+
+    async def count_by_status_and_type(self) -> list[tuple[str, str, int]]:
+        stmt = (
+            select(Task.status, Task.task_type, func.count())
+            .group_by(Task.status, Task.task_type)
+        )
+        result = await self._session.execute(stmt)
+        return [(status, task_type, count) for status, task_type, count in result.all()]
 
     async def pull_once(
         self,
