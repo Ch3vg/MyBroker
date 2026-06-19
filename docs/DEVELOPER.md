@@ -411,6 +411,8 @@ broker.app         # ASGI-приложение для встраивания
 
 ## Тестирование
 
+Примеры HTTP-запросов к запущенному брокеру: [API_EXAMPLES.md](API_EXAMPLES.md).
+
 Тесты используют отдельную тестовую БД (`file:memdb1?mode=memory&cache=shared` для SQLite). Запуск из активированного venv:
 
     pytest
