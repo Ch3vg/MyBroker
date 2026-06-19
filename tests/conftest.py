@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from broker import Broker
 from broker.db.schema import init_schema
+from helpers import stress_db_backends
 
 STRESS_ITERATIONS = 10
 
@@ -16,9 +17,19 @@ def pytest_configure(config: pytest.Config) -> None:
         "markers",
         "stress: повторяет недетерминированный тест несколько раз (см. STRESS_ITERATIONS)",
     )
+    config.addinivalue_line(
+        "markers",
+        "stress_db: прогоняет stress-тест на sqlite и postgresql (если задан BROKER_POSTGRES_DSN)",
+    )
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
+    if metafunc.definition.get_closest_marker("stress_db") is not None:
+        metafunc.parametrize(
+            "storage_backend",
+            stress_db_backends(),
+            ids=lambda backend: backend,
+        )
     marker = metafunc.definition.get_closest_marker("stress")
     if marker is None:
         return

@@ -120,7 +120,7 @@ class TaskRepository:
         )
         stmt = (
             update(Task)
-            .where(Task.id == candidate_id)
+            .where(Task.id == candidate_id, *conditions)
             .values(
                 status=TaskStatus.PROCESSING.value,
                 worker_id=worker_id,

@@ -17,4 +17,6 @@ async def test_concurrent_pull_assigns_task_once(client, _stress_attempt: int) -
 
 Для отдельного теста: `@pytest.mark.stress(iterations=20)`.
 
+Конкурентный pull на PostgreSQL: `@pytest.mark.stress_db` вместе с `@pytest.mark.stress` — при `BROKER_POSTGRES_DSN` тест гоняется и на sqlite, и на postgresql.
+
 Не помечать тесты с подменённым `sleep` или строго последовательной логикой — они детерминированы.

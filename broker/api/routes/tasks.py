@@ -72,7 +72,7 @@ async def list_tasks(
             TaskStatus(task_status)
         except ValueError as exc:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Invalid status",
             ) from exc
     page_limit = (

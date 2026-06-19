@@ -2,9 +2,8 @@ import os
 import uuid
 
 import pytest
-from httpx import ASGITransport, AsyncClient
 
-from broker import Broker
+from helpers import broker_test_client
 
 pytestmark = pytest.mark.postgresql
 
@@ -15,46 +14,40 @@ POSTGRES_DSN = os.getenv("BROKER_POSTGRES_DSN")
 @pytest.mark.asyncio
 async def test_postgres_publish_pull_ack_smoke() -> None:
     task_type = f"postgres.smoke.{uuid.uuid4().hex[:12]}"
-    broker = Broker(dsn=POSTGRES_DSN, log_level="WARNING")
-    app = broker.app
-    async with app.router.lifespan_context(app):
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            publish = await client.post(
-                "/api/v1/tasks",
-                json={"task_type": task_type, "payload": {"ok": True}},
-            )
-            assert publish.status_code == 201
-            task_id = publish.json()["task_id"]
+    async with broker_test_client(POSTGRES_DSN) as client:
+        publish = await client.post(
+            "/api/v1/tasks",
+            json={"task_type": task_type, "payload": {"ok": True}},
+        )
+        assert publish.status_code == 201
+        task_id = publish.json()["task_id"]
 
-            listed = await client.get(
-                "/api/v1/tasks",
-                params={"task_type": task_type, "status": "PENDING"},
-            )
-            assert listed.status_code == 200
-            assert listed.json()["total"] == 1
+        listed = await client.get(
+            "/api/v1/tasks",
+            params={"task_type": task_type, "status": "PENDING"},
+        )
+        assert listed.status_code == 200
+        assert listed.json()["total"] == 1
 
-            pulled = await client.get(
-                "/api/v1/tasks/pull",
-                params={"worker_id": "pg-smoke", "timeout": 0},
-            )
-            assert pulled.status_code == 200
-            assert pulled.json()["task_id"] == task_id
+        pulled = await client.get(
+            "/api/v1/tasks/pull",
+            params={"worker_id": "pg-smoke", "timeout": 0, "task_types": task_type},
+        )
+        assert pulled.status_code == 200
+        assert pulled.json()["task_id"] == task_id
 
-            ack = await client.post(
-                f"/api/v1/tasks/{task_id}/ack",
-                json={"worker_id": "pg-smoke"},
-            )
-            assert ack.status_code == 200
+        ack = await client.post(
+            f"/api/v1/tasks/{task_id}/ack",
+            json={"worker_id": "pg-smoke"},
+        )
+        assert ack.status_code == 200
 
-            completed = await client.get(
-                "/api/v1/tasks",
-                params={"status": "COMPLETED", "task_type": task_type},
-            )
-            assert completed.status_code == 200
-            assert completed.json()["total"] == 1
+        completed = await client.get(
+            "/api/v1/tasks",
+            params={"status": "COMPLETED", "task_type": task_type},
+        )
+        assert completed.status_code == 200
+        assert completed.json()["total"] == 1
 
-            status = await client.get(f"/api/v1/tasks/{task_id}/status")
-            assert status.json()["status"] == "COMPLETED"
-
-    await broker.engine.dispose()
+        status = await client.get(f"/api/v1/tasks/{task_id}/status")
+        assert status.json()["status"] == "COMPLETED"

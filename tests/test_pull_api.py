@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 import asyncio
+import uuid
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -8,6 +9,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from broker import Broker
 from broker.db.enums import TaskStatus
 from broker.db.models import Task
+from helpers import broker_test_client, resolve_storage_dsn
 
 
 async def _publish(client: AsyncClient, task_type: str = "job", **kwargs) -> str:
@@ -82,16 +84,22 @@ async def test_pull_reclaims_expired_lock(client: AsyncClient, broker: Broker) -
 
 
 @pytest.mark.stress
+@pytest.mark.stress_db
 @pytest.mark.asyncio
 async def test_concurrent_pull_assigns_task_once(
-    client: AsyncClient,
+    storage_backend: str,
+    memory_dsn: str,
     _stress_attempt: int,
 ) -> None:
-    task_id = await _publish(client)
-    results = await asyncio.gather(
-        client.get("/api/v1/tasks/pull", params={"worker_id": "w1", "timeout": 0}),
-        client.get("/api/v1/tasks/pull", params={"worker_id": "w2", "timeout": 0}),
-    )
+    dsn = resolve_storage_dsn(storage_backend, memory_dsn)
+    task_type = f"concurrent.job.{uuid.uuid4().hex[:12]}"
+    pull_params = {"timeout": 0, "task_types": task_type}
+    async with broker_test_client(dsn) as client:
+        task_id = await _publish(client, task_type=task_type)
+        results = await asyncio.gather(
+            client.get("/api/v1/tasks/pull", params={"worker_id": "w1", **pull_params}),
+            client.get("/api/v1/tasks/pull", params={"worker_id": "w2", **pull_params}),
+        )
     statuses = [response.status_code for response in results]
     assert statuses.count(200) == 1
     assert statuses.count(204) == 1

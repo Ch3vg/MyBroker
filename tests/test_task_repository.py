@@ -1,14 +1,17 @@
 from datetime import UTC, datetime, timedelta
 
 import asyncio
+import uuid
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from broker import Broker
 from broker.config import BrokerSettings
 from broker.db.enums import TaskStatus
 from broker.db.schema import init_schema
 from broker.repository.errors import StaleTaskError, TaskNotFoundError
 from broker.repository.tasks import TaskRepository
+from helpers import cleanup_postgres_test_db, resolve_storage_dsn
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -249,25 +252,37 @@ async def test_count_by_status_and_type(repository: TaskRepository) -> None:
 
 
 @pytest.mark.stress
+@pytest.mark.stress_db
 @pytest.mark.asyncio
 async def test_concurrent_pull_assigns_single_task(
-    broker,
+    storage_backend: str,
+    memory_dsn: str,
     settings: BrokerSettings,
     _stress_attempt: int,
 ) -> None:
-    await init_schema(broker.engine)
-    session_factory = async_sessionmaker(broker.engine, expire_on_commit=False)
+    dsn = resolve_storage_dsn(storage_backend, memory_dsn)
+    if storage_backend == "postgresql":
+        await cleanup_postgres_test_db(dsn)
+    broker = Broker(dsn=dsn, log_level="WARNING")
+    task_type = f"concurrent.job.{uuid.uuid4().hex[:12]}"
+    try:
+        await init_schema(broker.engine)
+        session_factory = async_sessionmaker(broker.engine, expire_on_commit=False)
 
-    async with session_factory() as session:
-        repository = TaskRepository(session, settings)
-        await repository.create(task_type="job", payload={})
-
-    async def pull(worker_id: str) -> str | None:
         async with session_factory() as session:
             repository = TaskRepository(session, settings)
-            task = await repository.pull_once(worker_id=worker_id)
-            return task.id if task else None
+            await repository.create(task_type=task_type, payload={})
 
-    results = await asyncio.gather(pull("w1"), pull("w2"))
-    pulled_ids = [task_id for task_id in results if task_id is not None]
-    assert len(pulled_ids) == 1
+        async def pull(worker_id: str) -> str | None:
+            async with session_factory() as session:
+                repository = TaskRepository(session, settings)
+                task = await repository.pull_once(worker_id=worker_id, task_types=[task_type])
+                return task.id if task else None
+
+        results = await asyncio.gather(pull("w1"), pull("w2"))
+        pulled_ids = [task_id for task_id in results if task_id is not None]
+        assert len(pulled_ids) == 1
+    finally:
+        await broker.engine.dispose()
+        if storage_backend == "postgresql":
+            await cleanup_postgres_test_db(dsn)

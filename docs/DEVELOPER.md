@@ -414,6 +414,8 @@ PostgreSQL smoke-тест (опционально):
 
 Без переменной `BROKER_POSTGRES_DSN` тест пропускается.
 
+Стресс-тесты конкурентного pull (`@pytest.mark.stress_db`) автоматически дублируются на PostgreSQL, если задан `BROKER_POSTGRES_DSN` (10 итераций × sqlite + 10 × postgresql).
+
 Покрытие v0.6.0 (дополнительно к v0.5.0):
 - `GET /tasks` (фильтры, пагинация, cap limit)
 - `list_tasks` в репозитории
