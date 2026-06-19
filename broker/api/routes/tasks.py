@@ -1,24 +1,24 @@
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from broker.api.deps import SessionDep
+from broker.api.deps import BrokerDep, SessionDep
 from broker.api.schemas.tasks import PublishTaskRequest, PublishTaskResponse, TaskStatusResponse
 from broker.repository.tasks import TaskRepository
 
 router = APIRouter(tags=["tasks"])
 
 
-def _repository(request: Request, session: AsyncSession) -> TaskRepository:
-    return TaskRepository(session, request.app.state.broker.settings)
+def _repository(broker: BrokerDep, session: AsyncSession) -> TaskRepository:
+    return TaskRepository(session, broker.settings)
 
 
 @router.post("/tasks", status_code=status.HTTP_201_CREATED, response_model=PublishTaskResponse)
 async def publish_task(
     body: PublishTaskRequest,
-    request: Request,
     session: SessionDep,
+    broker: BrokerDep,
 ) -> PublishTaskResponse:
-    repository = _repository(request, session)
+    repository = _repository(broker, session)
     task = await repository.create(
         task_type=body.task_type,
         payload=body.payload,
@@ -31,10 +31,10 @@ async def publish_task(
 @router.get("/tasks/{task_id}/status", response_model=TaskStatusResponse)
 async def get_task_status(
     task_id: str,
-    request: Request,
     session: SessionDep,
+    broker: BrokerDep,
 ) -> TaskStatusResponse:
-    repository = _repository(request, session)
+    repository = _repository(broker, session)
     task = await repository.get_by_id(task_id)
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
