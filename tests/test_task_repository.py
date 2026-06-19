@@ -128,8 +128,13 @@ async def test_pull_once_reclaims_expired_processing_task(repository: TaskReposi
     assert reclaimed.status == TaskStatus.PROCESSING.value
 
 
+@pytest.mark.stress
 @pytest.mark.asyncio
-async def test_concurrent_pull_assigns_single_task(broker, settings: BrokerSettings) -> None:
+async def test_concurrent_pull_assigns_single_task(
+    broker,
+    settings: BrokerSettings,
+    _stress_attempt: int,
+) -> None:
     await init_schema(broker.engine)
     session_factory = async_sessionmaker(broker.engine, expire_on_commit=False)
 

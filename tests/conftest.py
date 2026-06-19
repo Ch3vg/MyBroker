@@ -8,6 +8,27 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from broker import Broker
 from broker.db.schema import init_schema
 
+STRESS_ITERATIONS = 10
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers",
+        "stress: повторяет недетерминированный тест несколько раз (см. STRESS_ITERATIONS)",
+    )
+
+
+def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
+    marker = metafunc.definition.get_closest_marker("stress")
+    if marker is None:
+        return
+    iterations = marker.kwargs.get("iterations", STRESS_ITERATIONS)
+    metafunc.parametrize(
+        "_stress_attempt",
+        range(iterations),
+        ids=lambda attempt: f"attempt-{attempt + 1}",
+    )
+
 
 @pytest.fixture
 def memory_dsn() -> str:

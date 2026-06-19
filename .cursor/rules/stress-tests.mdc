@@ -1,0 +1,20 @@
+---
+description: Повторные прогоны для недетерминированных тестов
+globs: tests/**/*.py
+alwaysApply: false
+---
+
+# Stress-тесты для случайных кейсов
+
+Тесты с элементом случайности (конкурентность, гонки, реальные таймауты, порядок планировщика) помечать `@pytest.mark.stress` — они выполняются `STRESS_ITERATIONS` раз (по умолчанию 10, см. `tests/conftest.py`).
+
+```python
+@pytest.mark.stress
+@pytest.mark.asyncio
+async def test_concurrent_pull_assigns_task_once(client, _stress_attempt: int) -> None:
+    ...
+```
+
+Для отдельного теста: `@pytest.mark.stress(iterations=20)`.
+
+Не помечать тесты с подменённым `sleep` или строго последовательной логикой — они детерминированы.

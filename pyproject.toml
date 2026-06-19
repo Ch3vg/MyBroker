@@ -36,6 +36,9 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 addopts = "--cov=broker --cov-report=term-missing --cov-fail-under=90"
+markers = [
+    "stress: повторяет недетерминированный тест несколько раз",
+]
 
 [tool.coverage.run]
 source = ["broker"]

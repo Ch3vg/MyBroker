@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+import asyncio
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -78,6 +79,25 @@ async def test_pull_reclaims_expired_lock(client: AsyncClient, broker: Broker) -
     second = await client.get("/api/v1/tasks/pull", params={"worker_id": "w2", "timeout": 0})
     assert second.status_code == 200
     assert second.json()["task_id"] == task_id
+
+
+@pytest.mark.stress
+@pytest.mark.asyncio
+async def test_concurrent_pull_assigns_task_once(
+    client: AsyncClient,
+    _stress_attempt: int,
+) -> None:
+    task_id = await _publish(client)
+    results = await asyncio.gather(
+        client.get("/api/v1/tasks/pull", params={"worker_id": "w1", "timeout": 0}),
+        client.get("/api/v1/tasks/pull", params={"worker_id": "w2", "timeout": 0}),
+    )
+    statuses = [response.status_code for response in results]
+    assert statuses.count(200) == 1
+    assert statuses.count(204) == 1
+    winner = next(response for response in results if response.status_code == 200)
+    assert winner.json()["task_id"] == task_id
+
 
 @pytest.mark.asyncio
 async def test_pull_caps_timeout_at_max(memory_dsn: str) -> None:
