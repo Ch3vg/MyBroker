@@ -34,6 +34,13 @@ jobs:
     name: PostgreSQL smoke + stress_db
     runs-on: ubuntu-latest
 
+    # Ephemeral Postgres для CI (не production-секреты).
+    # services.* не поддерживает ${{ env.* }} — значения в контейнере должны совпадать с job env.
+    env:
+      POSTGRES_USER: broker
+      POSTGRES_PASSWORD: broker
+      POSTGRES_DB: broker_test
+
     services:
       postgres:
         image: postgres:16
@@ -63,5 +70,5 @@ jobs:
 
       - name: Run tests (PostgreSQL)
         env:
-          BROKER_POSTGRES_DSN: postgresql+asyncpg://broker:broker@localhost:5432/broker_test
+          BROKER_POSTGRES_DSN: postgresql+asyncpg://${{ env.POSTGRES_USER }}:${{ env.POSTGRES_PASSWORD }}@localhost:5432/${{ env.POSTGRES_DB }}
         run: pytest
