@@ -32,6 +32,7 @@ broker = Broker(
     pull_interval_seconds=1,
     list_default_limit=50,
     list_max_limit=200,
+    api_key="my-secret",  # опционально: защита API
     log_level="INFO",
 )
 
@@ -82,6 +83,16 @@ broker.app         # ASGI-приложение для встраивания
 ---
 
 ## API эндпоинты
+
+### Аутентификация *(v0.7.0)*
+
+Если в конструкторе `Broker` задан `api_key`, все эндпоинты (кроме `GET /api/v1/health`) требуют заголовок:
+
+    Authorization: Bearer <api_key>
+
+Без ключа или с неверным ключом — `401 Unauthorized` с телом `{"detail": "Unauthorized"}`. `GET /health` остаётся открытым для liveness-проверок оркестраторов.
+
+---
 
 ### POST /api/v1/tasks – публикация задачи
 
@@ -321,7 +332,7 @@ broker.app         # ASGI-приложение для встраивания
 | `list_default_limit` | `50` | Размер страницы по умолчанию |
 | `list_max_limit` | `200` | Максимальный limit |
 
-### Безопасность *(v0.7.0)*
+### Безопасность
 
 | Параметр | По умолчанию | Описание |
 |----------|--------------|----------|
@@ -415,6 +426,11 @@ PostgreSQL smoke-тест (опционально):
 Без переменной `BROKER_POSTGRES_DSN` тест пропускается.
 
 Стресс-тесты конкурентного pull (`@pytest.mark.stress_db`) автоматически дублируются на PostgreSQL, если задан `BROKER_POSTGRES_DSN` (10 итераций × sqlite + 10 × postgresql).
+
+Покрытие v0.7.0 (дополнительно к v0.6.0):
+- middleware `ApiKeyMiddleware`: 401 без ключа, неверный ключ, malformed `Authorization`
+- `GET /health` без ключа при включённом `api_key`
+- успешный доступ к `/metrics` и `POST /tasks` с валидным Bearer-токеном
 
 Покрытие v0.6.0 (дополнительно к v0.5.0):
 - `GET /tasks` (фильтры, пагинация, cap limit)

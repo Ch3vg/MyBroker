@@ -15,6 +15,7 @@ class BrokerSettings:
     pull_interval_seconds: int = 1
     list_default_limit: int = 50
     list_max_limit: int = 200
+    api_key: str | None = None
     log_level: str = "INFO"
 
 

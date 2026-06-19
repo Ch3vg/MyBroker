@@ -28,6 +28,7 @@ class Broker:
         pull_interval_seconds: int = DEFAULT_SETTINGS.pull_interval_seconds,
         list_default_limit: int = DEFAULT_SETTINGS.list_default_limit,
         list_max_limit: int = DEFAULT_SETTINGS.list_max_limit,
+        api_key: str | None = DEFAULT_SETTINGS.api_key,
         log_level: str = DEFAULT_SETTINGS.log_level,
     ) -> None:
         self.settings = BrokerSettings(
@@ -43,6 +44,7 @@ class Broker:
             pull_interval_seconds=pull_interval_seconds,
             list_default_limit=list_default_limit,
             list_max_limit=list_max_limit,
+            api_key=api_key,
             log_level=log_level,
         )
         configure_logging(self.settings.log_level)

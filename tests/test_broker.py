@@ -16,6 +16,7 @@ def test_broker_settings_defaults() -> None:
     assert settings.pull_interval_seconds == 1
     assert settings.list_default_limit == 50
     assert settings.list_max_limit == 200
+    assert settings.api_key is None
     assert settings.log_level == "INFO"
 
 
