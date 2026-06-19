@@ -1,5 +1,5 @@
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,7 +41,7 @@ class TaskRepository:
         delay_seconds: int = 0,
         max_retries: int | None = None,
     ) -> Task:
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         task = Task(
             id=str(uuid.uuid4()),
             task_type=task_type,
@@ -108,7 +108,7 @@ class TaskRepository:
         worker_id: str,
         task_types: list[str] | None = None,
     ) -> Task | None:
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         lock_ttl = timedelta(seconds=self._settings.default_lock_ttl_seconds)
         conditions = self._pull_conditions(now, task_types)
         candidate_id = (
@@ -148,7 +148,7 @@ class TaskRepository:
 
     async def heartbeat(self, task_id: str, worker_id: str) -> Task:
         task = await self._require_processing_for_worker(task_id, worker_id)
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         task.lock_until = now + timedelta(seconds=self._settings.default_lock_ttl_seconds)
         task.updated_at = now
         await self._session.commit()
@@ -157,7 +157,7 @@ class TaskRepository:
 
     async def ack(self, task_id: str, worker_id: str) -> Task:
         task = await self._require_processing_for_worker(task_id, worker_id)
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         task.status = TaskStatus.COMPLETED.value
         task.lock_until = None
         task.worker_id = None
@@ -168,7 +168,7 @@ class TaskRepository:
 
     async def nack(self, task_id: str, worker_id: str) -> Task:
         task = await self._require_processing_for_worker(task_id, worker_id)
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         task.retries += 1
         task.worker_id = None
         task.lock_until = None

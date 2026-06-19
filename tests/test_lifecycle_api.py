@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import AsyncClient
@@ -134,7 +134,7 @@ async def test_stale_lifecycle_after_lock_reclaimed(client: AsyncClient, broker:
     async with session_factory() as session:
         task = await session.get(Task, task_id)
         assert task is not None
-        task.lock_until = datetime.now(UTC) - timedelta(seconds=1)
+        task.lock_until = datetime.now(timezone.utc) - timedelta(seconds=1)
         await session.commit()
 
     reclaim = await client.get("/api/v1/tasks/pull", params={"worker_id": "w2", "timeout": 0})

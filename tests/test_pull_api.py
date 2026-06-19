@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import asyncio
 import uuid
 
@@ -74,7 +74,7 @@ async def test_pull_reclaims_expired_lock(client: AsyncClient, broker: Broker) -
     async with session_factory() as session:
         task = await session.get(Task, task_id)
         assert task is not None
-        task.lock_until = datetime.now(UTC) - timedelta(seconds=1)
+        task.lock_until = datetime.now(timezone.utc) - timedelta(seconds=1)
         task.status = TaskStatus.PROCESSING.value
         await session.commit()
 

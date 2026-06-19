@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import asyncio
 import uuid
@@ -16,8 +16,8 @@ from helpers import cleanup_postgres_test_db, resolve_storage_dsn
 
 def _as_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
-        return value.replace(tzinfo=UTC)
-    return value.astimezone(UTC)
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 @pytest.fixture
@@ -32,12 +32,12 @@ def repository(db_session: AsyncSession, settings: BrokerSettings) -> TaskReposi
 
 @pytest.mark.asyncio
 async def test_create_task_with_defaults(repository: TaskRepository) -> None:
-    before = datetime.now(UTC)
+    before = datetime.now(timezone.utc)
     task = await repository.create(
         task_type="config.regenerate",
         payload={"config_id": "abc"},
     )
-    after = datetime.now(UTC)
+    after = datetime.now(timezone.utc)
     available_at = _as_utc(task.available_at)
     created_at = _as_utc(task.created_at)
 
@@ -56,14 +56,14 @@ async def test_create_task_with_defaults(repository: TaskRepository) -> None:
 
 @pytest.mark.asyncio
 async def test_create_task_with_delay_and_custom_max_retries(repository: TaskRepository) -> None:
-    before = datetime.now(UTC)
+    before = datetime.now(timezone.utc)
     task = await repository.create(
         task_type="email.send",
         payload={"to": "user@example.com"},
         delay_seconds=30,
         max_retries=5,
     )
-    after = datetime.now(UTC)
+    after = datetime.now(timezone.utc)
     available_at = _as_utc(task.available_at)
 
     assert task.max_retries == 5
@@ -121,7 +121,7 @@ async def test_pull_once_reclaims_expired_processing_task(repository: TaskReposi
     pulled = await repository.pull_once(worker_id="worker-1")
     assert pulled is not None
 
-    pulled.lock_until = datetime.now(UTC) - timedelta(seconds=1)
+    pulled.lock_until = datetime.now(timezone.utc) - timedelta(seconds=1)
     pulled.status = TaskStatus.PROCESSING.value
     await repository._session.commit()
 
@@ -183,7 +183,7 @@ async def test_ack_raises_stale_for_wrong_worker(repository: TaskRepository) -> 
 async def test_nack_retries_task(db_session: AsyncSession) -> None:
     settings = BrokerSettings(retry_delay_seconds=30, default_max_retries=3)
     repository = TaskRepository(db_session, settings)
-    before = datetime.now(UTC)
+    before = datetime.now(timezone.utc)
     task = await repository.create(task_type="job", payload={})
     await repository.pull_once(worker_id="w1")
     await repository.nack(task.id, "w1")
@@ -194,7 +194,7 @@ async def test_nack_retries_task(db_session: AsyncSession) -> None:
     assert updated.worker_id is None
     assert updated.lock_until is None
     available_at = _as_utc(updated.available_at)
-    assert before + timedelta(seconds=29) <= available_at <= datetime.now(UTC) + timedelta(seconds=31)
+    assert before + timedelta(seconds=29) <= available_at <= datetime.now(timezone.utc) + timedelta(seconds=31)
 
 
 @pytest.mark.asyncio

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import pytest
 from httpx import AsyncClient
@@ -42,8 +42,8 @@ async def test_publish_task_with_delay_and_max_retries(client: AsyncClient) -> N
     assert status_body["max_retries"] == 7
     available_at = datetime.fromisoformat(status_body["available_at"].replace("Z", "+00:00"))
     if available_at.tzinfo is None:
-        available_at = available_at.replace(tzinfo=UTC)
-    assert available_at > datetime.now(UTC)
+        available_at = available_at.replace(tzinfo=timezone.utc)
+    assert available_at > datetime.now(timezone.utc)
 
 
 @pytest.mark.asyncio
