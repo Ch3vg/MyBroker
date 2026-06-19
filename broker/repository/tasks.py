@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from broker.config import BrokerSettings
 from broker.db.enums import TaskStatus
 from broker.db.models import Task
+from broker.repository.errors import StaleTaskError, TaskNotFoundError
 
 
 class TaskRepository:
@@ -94,6 +95,50 @@ class TaskRepository:
         if task is None:
             await self._session.rollback()
             return None
+        await self._session.commit()
+        await self._session.refresh(task)
+        return task
+
+    async def _require_processing_for_worker(self, task_id: str, worker_id: str) -> Task:
+        task = await self.get_by_id(task_id)
+        if task is None:
+            raise TaskNotFoundError
+        if task.status != TaskStatus.PROCESSING.value or task.worker_id != worker_id:
+            raise StaleTaskError
+        return task
+
+    async def heartbeat(self, task_id: str, worker_id: str) -> Task:
+        task = await self._require_processing_for_worker(task_id, worker_id)
+        now = datetime.now(UTC)
+        task.lock_until = now + timedelta(seconds=self._settings.default_lock_ttl_seconds)
+        task.updated_at = now
+        await self._session.commit()
+        await self._session.refresh(task)
+        return task
+
+    async def ack(self, task_id: str, worker_id: str) -> Task:
+        task = await self._require_processing_for_worker(task_id, worker_id)
+        now = datetime.now(UTC)
+        task.status = TaskStatus.COMPLETED.value
+        task.lock_until = None
+        task.worker_id = None
+        task.updated_at = now
+        await self._session.commit()
+        await self._session.refresh(task)
+        return task
+
+    async def nack(self, task_id: str, worker_id: str) -> Task:
+        task = await self._require_processing_for_worker(task_id, worker_id)
+        now = datetime.now(UTC)
+        task.retries += 1
+        task.worker_id = None
+        task.lock_until = None
+        task.updated_at = now
+        if task.retries < task.max_retries:
+            task.status = TaskStatus.PENDING.value
+            task.available_at = now + timedelta(seconds=self._settings.retry_delay_seconds)
+        else:
+            task.status = TaskStatus.DEAD.value
         await self._session.commit()
         await self._session.refresh(task)
         return task

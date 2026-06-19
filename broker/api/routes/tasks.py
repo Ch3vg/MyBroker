@@ -4,19 +4,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from broker.api.deps import BrokerDep, SessionDep
 from broker.api.query_params import parse_task_types
 from broker.api.schemas.tasks import (
+    NackRequest,
     PublishTaskRequest,
     PublishTaskResponse,
     PullTaskResponse,
     TaskStatusResponse,
+    WorkerActionRequest,
 )
+from broker.repository.errors import StaleTaskError, TaskNotFoundError
 from broker.repository.tasks import TaskRepository
 from broker.services.pull import pull_with_polling
 
 router = APIRouter(tags=["tasks"])
 
+STALE_TASK_DETAIL = "STALE_TASK"
+
 
 def _repository(broker: BrokerDep, session: AsyncSession) -> TaskRepository:
     return TaskRepository(session, broker.settings)
+
+
+def _lifecycle_http_errors(exc: TaskNotFoundError | StaleTaskError) -> None:
+    if isinstance(exc, TaskNotFoundError):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found") from exc
+    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=STALE_TASK_DETAIL) from exc
 
 
 @router.post("/tasks", status_code=status.HTTP_201_CREATED, response_model=PublishTaskResponse)
@@ -63,6 +74,48 @@ async def pull_task(
         payload=task.payload,
         lock_ttl_seconds=broker.settings.default_lock_ttl_seconds,
     )
+
+
+@router.post("/tasks/{task_id}/heartbeat", status_code=status.HTTP_200_OK)
+async def heartbeat_task(
+    task_id: str,
+    body: WorkerActionRequest,
+    session: SessionDep,
+    broker: BrokerDep,
+) -> None:
+    repository = _repository(broker, session)
+    try:
+        await repository.heartbeat(task_id, body.worker_id)
+    except (TaskNotFoundError, StaleTaskError) as exc:
+        _lifecycle_http_errors(exc)
+
+
+@router.post("/tasks/{task_id}/ack", status_code=status.HTTP_200_OK)
+async def ack_task(
+    task_id: str,
+    body: WorkerActionRequest,
+    session: SessionDep,
+    broker: BrokerDep,
+) -> None:
+    repository = _repository(broker, session)
+    try:
+        await repository.ack(task_id, body.worker_id)
+    except (TaskNotFoundError, StaleTaskError) as exc:
+        _lifecycle_http_errors(exc)
+
+
+@router.post("/tasks/{task_id}/nack", status_code=status.HTTP_200_OK)
+async def nack_task(
+    task_id: str,
+    body: NackRequest,
+    session: SessionDep,
+    broker: BrokerDep,
+) -> None:
+    repository = _repository(broker, session)
+    try:
+        await repository.nack(task_id, body.worker_id)
+    except (TaskNotFoundError, StaleTaskError) as exc:
+        _lifecycle_http_errors(exc)
 
 
 @router.get("/tasks/{task_id}/status", response_model=TaskStatusResponse)

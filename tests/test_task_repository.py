@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from broker.config import BrokerSettings
 from broker.db.enums import TaskStatus
 from broker.db.schema import init_schema
+from broker.repository.errors import StaleTaskError, TaskNotFoundError
 from broker.repository.tasks import TaskRepository
 
 
@@ -126,6 +127,92 @@ async def test_pull_once_reclaims_expired_processing_task(repository: TaskReposi
     assert reclaimed.id == task.id
     assert reclaimed.worker_id == "worker-2"
     assert reclaimed.status == TaskStatus.PROCESSING.value
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_extends_lock(repository: TaskRepository) -> None:
+    task = await repository.create(task_type="job", payload={})
+    pulled = await repository.pull_once(worker_id="w1")
+    assert pulled is not None
+    old_lock_until = _as_utc(pulled.lock_until)
+
+    await repository.heartbeat(task.id, "w1")
+    updated = await repository.get_by_id(task.id)
+    assert updated is not None
+    assert _as_utc(updated.lock_until) > old_lock_until
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_raises_stale_for_wrong_worker(repository: TaskRepository) -> None:
+    task = await repository.create(task_type="job", payload={})
+    await repository.pull_once(worker_id="w1")
+    with pytest.raises(StaleTaskError):
+        await repository.heartbeat(task.id, "w2")
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_raises_not_found(repository: TaskRepository) -> None:
+    with pytest.raises(TaskNotFoundError):
+        await repository.heartbeat("missing", "w1")
+
+
+@pytest.mark.asyncio
+async def test_ack_completes_task(repository: TaskRepository) -> None:
+    task = await repository.create(task_type="job", payload={})
+    await repository.pull_once(worker_id="w1")
+    await repository.ack(task.id, "w1")
+    updated = await repository.get_by_id(task.id)
+    assert updated is not None
+    assert updated.status == TaskStatus.COMPLETED.value
+    assert updated.worker_id is None
+    assert updated.lock_until is None
+
+
+@pytest.mark.asyncio
+async def test_ack_raises_stale_for_wrong_worker(repository: TaskRepository) -> None:
+    task = await repository.create(task_type="job", payload={})
+    await repository.pull_once(worker_id="w1")
+    with pytest.raises(StaleTaskError):
+        await repository.ack(task.id, "w2")
+
+
+@pytest.mark.asyncio
+async def test_nack_retries_task(db_session: AsyncSession) -> None:
+    settings = BrokerSettings(retry_delay_seconds=30, default_max_retries=3)
+    repository = TaskRepository(db_session, settings)
+    before = datetime.now(UTC)
+    task = await repository.create(task_type="job", payload={})
+    await repository.pull_once(worker_id="w1")
+    await repository.nack(task.id, "w1")
+    updated = await repository.get_by_id(task.id)
+    assert updated is not None
+    assert updated.status == TaskStatus.PENDING.value
+    assert updated.retries == 1
+    assert updated.worker_id is None
+    assert updated.lock_until is None
+    available_at = _as_utc(updated.available_at)
+    assert before + timedelta(seconds=29) <= available_at <= datetime.now(UTC) + timedelta(seconds=31)
+
+
+@pytest.mark.asyncio
+async def test_nack_moves_to_dead_after_max_retries(db_session: AsyncSession) -> None:
+    settings = BrokerSettings(retry_delay_seconds=0, default_max_retries=3)
+    repository = TaskRepository(db_session, settings)
+    task = await repository.create(task_type="job", payload={}, max_retries=2)
+    task_id = task.id
+    await repository.pull_once(worker_id="w1")
+    await repository.nack(task_id, "w1")
+    retried = await repository.get_by_id(task_id)
+    assert retried is not None
+    assert retried.status == TaskStatus.PENDING.value
+    assert retried.retries == 1
+
+    await repository.pull_once(worker_id="w1")
+    await repository.nack(task_id, "w1")
+    dead = await repository.get_by_id(task_id)
+    assert dead is not None
+    assert dead.status == TaskStatus.DEAD.value
+    assert dead.retries == 2
 
 
 @pytest.mark.stress

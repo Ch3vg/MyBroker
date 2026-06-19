@@ -31,3 +31,11 @@ class TaskStatusResponse(BaseModel):
     max_retries: int
     available_at: datetime
     created_at: datetime
+
+
+class WorkerActionRequest(BaseModel):
+    worker_id: str = Field(min_length=1)
+
+
+class NackRequest(WorkerActionRequest):
+    reason: str = Field(default="", max_length=2000)
