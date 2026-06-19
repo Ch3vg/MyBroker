@@ -3,7 +3,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from broker.api.routes import health
+from broker.api.deps import init_app_state
+from broker.api.routes import health, tasks
 from broker.db.schema import init_schema
 
 
@@ -19,5 +20,7 @@ def create_app(broker: "Broker") -> FastAPI:
         await broker.engine.dispose()
 
     app = FastAPI(title="Task Broker", lifespan=lifespan)
+    init_app_state(app, broker)
     app.include_router(health.router, prefix="/api/v1")
+    app.include_router(tasks.router, prefix="/api/v1")
     return app

@@ -16,3 +16,6 @@ class BrokerSettings:
     list_default_limit: int = 50
     list_max_limit: int = 200
     log_level: str = "INFO"
+
+
+DEFAULT_SETTINGS = BrokerSettings()

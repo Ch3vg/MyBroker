@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from broker.api.app import create_app
-from broker.config import BrokerSettings
+from broker.config import DEFAULT_SETTINGS, BrokerSettings
 from broker.logging_config import configure_logging
 
 logger = structlog.get_logger(__name__)
@@ -16,19 +16,19 @@ class Broker:
     def __init__(
         self,
         *,
-        dsn: str = BrokerSettings.dsn,
-        host: str = BrokerSettings.host,
-        port: int = BrokerSettings.port,
-        default_lock_ttl_seconds: int = BrokerSettings.default_lock_ttl_seconds,
-        default_max_retries: int = BrokerSettings.default_max_retries,
-        retry_delay_seconds: int = BrokerSettings.retry_delay_seconds,
-        dead_letter_enabled: bool = BrokerSettings.dead_letter_enabled,
-        default_pull_timeout_seconds: int = BrokerSettings.default_pull_timeout_seconds,
-        max_pull_timeout_seconds: int = BrokerSettings.max_pull_timeout_seconds,
-        pull_interval_seconds: int = BrokerSettings.pull_interval_seconds,
-        list_default_limit: int = BrokerSettings.list_default_limit,
-        list_max_limit: int = BrokerSettings.list_max_limit,
-        log_level: str = BrokerSettings.log_level,
+        dsn: str = DEFAULT_SETTINGS.dsn,
+        host: str = DEFAULT_SETTINGS.host,
+        port: int = DEFAULT_SETTINGS.port,
+        default_lock_ttl_seconds: int = DEFAULT_SETTINGS.default_lock_ttl_seconds,
+        default_max_retries: int = DEFAULT_SETTINGS.default_max_retries,
+        retry_delay_seconds: int = DEFAULT_SETTINGS.retry_delay_seconds,
+        dead_letter_enabled: bool = DEFAULT_SETTINGS.dead_letter_enabled,
+        default_pull_timeout_seconds: int = DEFAULT_SETTINGS.default_pull_timeout_seconds,
+        max_pull_timeout_seconds: int = DEFAULT_SETTINGS.max_pull_timeout_seconds,
+        pull_interval_seconds: int = DEFAULT_SETTINGS.pull_interval_seconds,
+        list_default_limit: int = DEFAULT_SETTINGS.list_default_limit,
+        list_max_limit: int = DEFAULT_SETTINGS.list_max_limit,
+        log_level: str = DEFAULT_SETTINGS.log_level,
     ) -> None:
         self.settings = BrokerSettings(
             dsn=dsn,

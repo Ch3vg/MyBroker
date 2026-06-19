@@ -1,7 +1,11 @@
+from collections.abc import AsyncIterator
+
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from broker import Broker
+from broker.db.schema import init_schema
 
 MEMORY_DSN = "sqlite+aiosqlite:///file:memdb1?mode=memory&cache=shared&uri=true"
 
@@ -17,7 +21,17 @@ def broker(memory_dsn: str) -> Broker:
 
 
 @pytest.fixture
-async def client(broker: Broker) -> AsyncClient:
-    transport = ASGITransport(app=broker.app)
-    async with AsyncClient(transport=transport, base_url="http://test") as async_client:
-        yield async_client
+async def db_session(broker: Broker) -> AsyncIterator[AsyncSession]:
+    await init_schema(broker.engine)
+    session_factory = async_sessionmaker(broker.engine, expire_on_commit=False)
+    async with session_factory() as session:
+        yield session
+
+
+@pytest.fixture
+async def client(broker: Broker) -> AsyncIterator[AsyncClient]:
+    app = broker.app
+    async with app.router.lifespan_context(app):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as async_client:
+            yield async_client
